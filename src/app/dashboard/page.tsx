@@ -1,31 +1,125 @@
 'use client';
 
-import { useAuth } from '../providers/AuthProvider';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useAuth } from '../providers/AuthProvider';
+import { supabase } from '@/lib/supabase'; // Importar el cliente de Supabase
+
+// Interfaz para los datos de ubicación que obtendremos de Supabase
+interface LocationData {
+  id: string;
+  name: string;
+  description: string | null;
+  latitude: number;
+  longitude: number;
+  image_url?: string;
+}
 
 export default function Dashboard() {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading: authLoading, signOut } = useAuth();
   const router = useRouter();
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [locations, setLocations] = useState<LocationData[]>([]);
+  const [loadingLocations, setLoadingLocations] = useState(true);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
+  // Redirigir si no está autenticado
   useEffect(() => {
-    if (!loading && !user) {
+    if (!authLoading && !user) {
       router.push('/login');
     }
-  }, [user, loading, router]);
+  }, [user, authLoading, router]);
 
-  if (loading) {
+  // Obtener ubicación del usuario
+  useEffect(() => {
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setUserLocation({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
+        },
+        (error) => {
+          console.error('Error obteniendo la ubicación:', error);
+          setLocationError('No se pudo obtener tu ubicación.');
+          setLoadingLocations(false); // Dejar de cargar si falla la ubicación
+        }
+      );
+    } else {
+      setLocationError('Geolocalización no soportada en este navegador.');
+      setLoadingLocations(false); // Dejar de cargar si no hay soporte
+    }
+  }, []);
+
+  // Cargar ubicaciones cercanas una vez que tengamos la ubicación del usuario
+  useEffect(() => {
+    const fetchLocations = async () => {
+      if (!userLocation) return; // No buscar si no tenemos la ubicación del usuario
+
+      setLoadingLocations(true);
+      setLocationError(null);
+
+      try {
+        // TODO: Implementar lógica de búsqueda por cercanía. Por ahora, solo traemos todos
+        const { data, error } = await supabase
+          .from('locations')
+          .select('id, name, description, latitude, longitude, image_url');
+
+        if (error) throw error;
+
+        if (data) {
+          // Opcional: Calcular distancia y ordenar en el frontend (menos eficiente para muchos datos)
+          const locationsWithDistance = data.map(loc => ({
+            ...loc,
+            distance: calculateDistance(userLocation.latitude, userLocation.longitude, loc.latitude, loc.longitude)
+          })).sort((a, b) => a.distance - b.distance);
+
+          setLocations(locationsWithDistance as LocationData[]); // Aserción de tipo para incluir 'distance' temporalmente si es necesario mostrarla
+        } else {
+            setLocations([]);
+        }
+      } catch (err: any) {
+        console.error('Error cargando ubicaciones:', err);
+        setLocationError('Error al cargar ubicaciones: ' + (err.message || 'Desconocido'));
+        setLocations([]);
+      } finally {
+        setLoadingLocations(false);
+      }
+    };
+
+    fetchLocations();
+  }, [userLocation]); // Este efecto se ejecuta cuando userLocation cambia
+
+  // Función simple para calcular la distancia entre dos puntos (Haversine formula)
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // Radio de la Tierra en kilómetros
+    const dLat = (lat2 - lat1) * Math.PI / R;
+    const dLon = (lon2 - lon1) * Math.PI / R;
+    const a = 
+      0.5 - Math.cos(dLat)/2 + 
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      (1 - Math.cos(dLon)) / 2;
+
+    return R * 2 * Math.asin(Math.sqrt(a)); // Distancia en kilómetros
+  };
+
+  // Mostrar carga o error mientras se obtiene el usuario o las ubicaciones
+  if (authLoading || loadingLocations) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+        <p className="ml-4 text-gray-700">{authLoading ? 'Verificando sesión...' : locationError ? locationError : 'Cargando ubicaciones...'}</p>
       </div>
     );
   }
 
+  // Si no hay usuario (redirección ya manejada por el effect)
   if (!user) {
-    return null;
+      return null; // Debería redirigir antes de llegar aquí si authLoading es false
   }
 
+  // Mostrar el dashboard con las ubicaciones
   return (
     <div className="min-h-screen bg-gray-100">
       <nav className="bg-white shadow-sm">
@@ -35,9 +129,10 @@ export default function Dashboard() {
               <h1 className="text-xl font-semibold">Travelia Dashboard</h1>
             </div>
             <div className="flex items-center">
+              <span className="text-gray-600 text-sm mr-4">Hola, {user.email}</span>
               <button
                 onClick={signOut}
-                className="ml-4 px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
+                className="px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
               >
                 Cerrar Sesión
               </button>
@@ -48,9 +143,38 @@ export default function Dashboard() {
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
-          <div className="border-4 border-dashed border-gray-200 rounded-lg h-96 p-4">
-            <h2 className="text-2xl font-bold mb-4">Bienvenido, {user.email}</h2>
-            <p>Esta es tu página de dashboard. Aquí podrás ver tu contenido personalizado.</p>
+          <div className="bg-white shadow overflow-hidden sm:rounded-lg p-6">
+            <h2 className="text-2xl font-bold mb-4">Lugares Cercanos</h2>
+
+            {locationError && (
+                <div className="text-red-500 text-center mb-4">{locationError}</div>
+            )}
+
+            {!userLocation && !locationError && !loadingLocations && (
+                 <div className="text-gray-600 text-center mb-4">Esperando ubicación... Por favor, permite la geolocalización en tu navegador.</div>
+            )}
+
+            {userLocation && locations.length > 0 ? (
+              <ul className="divide-y divide-gray-200">
+                {locations.map((location) => (
+                  <li key={location.id} className="py-4 flex flex-col sm:flex-row items-center sm:items-start">
+                    {location.image_url && (
+                      <img src={location.image_url} alt={location.name} className="w-24 h-24 object-cover rounded-md mr-4 mb-4 sm:mb-0" />
+                    )}
+                    <div className="flex flex-col flex-grow">
+                      <p className="text-lg font-semibold text-gray-900">{location.name}</p>
+                      {location.description && <p className="mt-1 text-sm text-gray-600">{location.description}</p>}
+                      {/* Mostrar distancia si se calculó en el frontend */}
+                      {(location as any).distance !== undefined && (
+                           <p className="mt-1 text-sm text-gray-500">{(location as any).distance.toFixed(2)} km de distancia</p>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : userLocation && !loadingLocations && !locationError && (
+              <div className="text-gray-600 text-center">No se encontraron lugares cercanos.</div>
+            )}
           </div>
         </div>
       </main>
