@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../providers/AuthProvider';
 import { supabase } from '@/lib/supabase'; // Importar el cliente de Supabase
+import Image from 'next/image'; // Importar el componente Image de Next.js
 
 // Interfaz para los datos de ubicación que obtendremos de Supabase
 interface LocationData {
@@ -13,6 +14,7 @@ interface LocationData {
   latitude: number;
   longitude: number;
   image_url?: string;
+  distance?: number; // Añadir propiedad de distancia opcional
 }
 
 export default function Dashboard() {
@@ -79,9 +81,9 @@ export default function Dashboard() {
         } else {
             setLocations([]);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Error cargando ubicaciones:', err);
-        setLocationError('Error al cargar ubicaciones: ' + (err.message || 'Desconocido'));
+        setLocationError('Error al cargar ubicaciones: ' + (err instanceof Error ? err.message : String(err)));
         setLocations([]);
       } finally {
         setLoadingLocations(false);
@@ -159,14 +161,14 @@ export default function Dashboard() {
                 {locations.map((location) => (
                   <li key={location.id} className="py-4 flex flex-col sm:flex-row items-center sm:items-start">
                     {location.image_url && (
-                      <img src={location.image_url} alt={location.name} className="w-24 h-24 object-cover rounded-md mr-4 mb-4 sm:mb-0" />
+                      <Image src={location.image_url} alt={location.name} className="w-24 h-24 object-cover rounded-md mr-4 mb-4 sm:mb-0" width={96} height={96} />
                     )}
                     <div className="flex flex-col flex-grow">
                       <p className="text-lg font-semibold text-gray-900">{location.name}</p>
                       {location.description && <p className="mt-1 text-sm text-gray-600">{location.description}</p>}
                       {/* Mostrar distancia si se calculó en el frontend */}
-                      {(location as any).distance !== undefined && (
-                           <p className="mt-1 text-sm text-gray-500">{(location as any).distance.toFixed(2)} km de distancia</p>
+                      {location.distance !== undefined && (
+                         <p className="mt-1 text-sm text-gray-500">{location.distance.toFixed(2)} km de distancia</p>
                       )}
                     </div>
                   </li>
