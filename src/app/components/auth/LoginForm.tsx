@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { useAuth } from '../../providers/AuthProvider';
@@ -12,36 +12,20 @@ export default function LoginForm() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const { user, loading: authLoading } = useAuth();
 
-  // Si el usuario ya está autenticado, redirigir al dashboard
-  if (user) {
-    router.push('/dashboard');
-    return null;
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) throw error;
-
-      if (data?.user) {
-        router.push('/dashboard');
-      }
-    } catch (err) {
-      setError((err as Error).message || 'Error al iniciar sesión');
-    } finally {
-      setLoading(false);
+  // Redirigir al dashboard si el usuario ya está autenticado y la carga terminó
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.push('/dashboard');
     }
-  };
+  }, [user, authLoading, router]);
+
+  // Si está cargando la autenticación, no renderizar nada o mostrar un spinner
+  if (authLoading) {
+    return null; // O un spinner de carga si prefieres
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -50,8 +34,13 @@ export default function LoginForm() {
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
             Iniciar Sesión en Travelia
           </h2>
+          {/* Mostrar error si viene de la redirección de la API route */}
+          {searchParams.get('error') && (
+            <div className="text-red-500 text-sm text-center mt-2">{searchParams.get('error')}</div>
+          )}
         </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+        {/* El formulario ahora apunta a la nueva API route y usa el método POST */}
+        <form className="mt-8 space-y-6" action="/auth/login" method="post">
           <div className="rounded-md shadow-sm -space-y-px">
             <div>
               <label htmlFor="email" className="sr-only">
@@ -86,10 +75,6 @@ export default function LoginForm() {
               />
             </div>
           </div>
-
-          {error && (
-            <div className="text-red-500 text-sm text-center">{error}</div>
-          )}
 
           <div>
             <button

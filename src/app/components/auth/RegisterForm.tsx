@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
@@ -13,12 +13,18 @@ export default function RegisterForm() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
-  // Si el usuario ya está autenticado, redirigir al dashboard
-  if (user) {
-    router.push('/dashboard');
-    return null;
+  // Redirigir al dashboard si el usuario ya está autenticado y la carga terminó
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.push('/dashboard');
+    }
+  }, [user, authLoading, router]);
+
+  // Si está cargando la autenticación, no renderizar nada o mostrar un spinner
+  if (authLoading) {
+    return null; // O un spinner de carga si prefieres
   }
 
   const handleSubmit = async (e: React.FormEvent) => {

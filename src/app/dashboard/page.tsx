@@ -6,7 +6,7 @@ import { useAuth } from '../providers/AuthProvider';
 import { supabase } from '@/lib/supabase'; // Importar el cliente de Supabase
 import Image from 'next/image'; // Importar el componente Image de Next.js
 
-// Interfaz para los datos de ubicación que obtendremos de Supabase
+// Interfaz para los datos de ubicación que obtendremos de la API (ahora incluye distance)
 interface LocationData {
   id: string;
   name: string;
@@ -14,7 +14,7 @@ interface LocationData {
   latitude: number;
   longitude: number;
   image_url?: string;
-  distance?: number; // Añadir propiedad de distancia opcional
+  distance: number; // La API ahora devuelve la distancia calculada
 }
 
 export default function Dashboard() {
@@ -37,6 +37,7 @@ export default function Dashboard() {
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          console.log('Ubicación obtenida:', position.coords);
           setUserLocation({
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
@@ -49,6 +50,7 @@ export default function Dashboard() {
         }
       );
     } else {
+      console.log('Geolocalización no soportada.');
       setLocationError('Geolocalización no soportada en este navegador.');
       setLoadingLocations(false); // Dejar de cargar si no hay soporte
     }
@@ -57,31 +59,36 @@ export default function Dashboard() {
   // Cargar ubicaciones cercanas una vez que tengamos la ubicación del usuario
   useEffect(() => {
     const fetchLocations = async () => {
-      if (!userLocation) return; // No buscar si no tenemos la ubicación del usuario
+      if (!userLocation) {
+        console.log('Esperando ubicación del usuario...');
+        return; // No buscar si no tenemos la ubicación del usuario
+      }
 
       setLoadingLocations(true);
       setLocationError(null);
+      console.log('Obteniendo ubicaciones de la API para la ubicación:', userLocation);
 
       try {
-        // TODO: Implementar lógica de búsqueda por cercanía. Por ahora, solo traemos todos
-        const { data, error } = await supabase
-          .from('locations')
-          .select('id, name, description, latitude, longitude, image_url');
+        // Llamar a la nueva API route para obtener ubicaciones por cercanía
+        const response = await fetch(`/api/locations?lat=${userLocation.latitude}&lon=${userLocation.longitude}`);
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Error desconocido al obtener ubicaciones');
+        }
 
-        if (error) throw error;
+        const data: LocationData[] = await response.json();
 
         if (data) {
-          // Opcional: Calcular distancia y ordenar en el frontend (menos eficiente para muchos datos)
-          const locationsWithDistance = data.map(loc => ({
-            ...loc,
-            distance: calculateDistance(userLocation.latitude, userLocation.longitude, loc.latitude, loc.longitude)
-          })).sort((a, b) => a.distance - b.distance);
+          console.log('Datos de ubicaciones obtenidos de la API (' + data.length + '):', data);
 
-          setLocations(locationsWithDistance as LocationData[]); // Aserción de tipo para incluir 'distance' temporalmente si es necesario mostrarla
+          // Los datos ya vienen ordenados por cercanía y con la distancia calculada
+          setLocations(data);
         } else {
+            console.log('No se obtuvieron datos de ubicaciones de la API.');
             setLocations([]);
         }
-      } catch (err: unknown) {
+      } catch (err: unknown) { // Usar unknown en lugar de any
         console.error('Error cargando ubicaciones:', err);
         setLocationError('Error al cargar ubicaciones: ' + (err instanceof Error ? err.message : String(err)));
         setLocations([]);
@@ -94,6 +101,7 @@ export default function Dashboard() {
   }, [userLocation]); // Este efecto se ejecuta cuando userLocation cambia
 
   // Función simple para calcular la distancia entre dos puntos (Haversine formula)
+  // Ya no es necesaria si la BD calcula, podemos eliminarla si queremos simplificar.
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371; // Radio de la Tierra en kilómetros
     const dLat = (lat2 - lat1) * Math.PI / R;
@@ -166,10 +174,8 @@ export default function Dashboard() {
                     <div className="flex flex-col flex-grow">
                       <p className="text-lg font-semibold text-gray-900">{location.name}</p>
                       {location.description && <p className="mt-1 text-sm text-gray-600">{location.description}</p>}
-                      {/* Mostrar distancia si se calculó en el frontend */}
-                      {location.distance !== undefined && (
-                         <p className="mt-1 text-sm text-gray-500">{location.distance.toFixed(2)} km de distancia</p>
-                      )}
+                      {/* Mostrar distancia que ahora viene de la API */}
+                      <p className="mt-1 text-sm text-gray-500">{location.distance.toFixed(2)} km de distancia</p>
                     </div>
                   </li>
                 ))}
