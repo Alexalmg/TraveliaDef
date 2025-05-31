@@ -44,8 +44,8 @@ export default function RegisterForm() {
       if (data?.user) {
         router.push('/login?message=Revisa tu email para confirmar tu cuenta');
       }
-    } catch (err: any) {
-      setError(err.message || 'Error al registrar usuario');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error al registrar usuario');
     } finally {
       setLoading(false);
     }

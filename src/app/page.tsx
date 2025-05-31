@@ -3,7 +3,6 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from './providers/AuthProvider';
-import Image from "next/image";
 
 export default function HomePage() {
   const { user, loading } = useAuth();
