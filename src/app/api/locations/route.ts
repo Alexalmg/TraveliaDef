@@ -2,39 +2,55 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
+// Función auxiliar para calcular la distancia esférica entre dos puntos (lat1, lon1) y (lat2, lon2) en metros
+// Usando la fórmula Haversine o una aproximación esférica simple
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3; // radio de la Tierra en metros
+  const φ1 = lat1 * Math.PI / 180; // φ, λ in radians
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  const distance = R * c; // en metros
+  return distance;
+}
+
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
-  const latitude = requestUrl.searchParams.get('lat');
-  const longitude = requestUrl.searchParams.get('lon');
+  const { searchParams } = requestUrl;
+  const latitude = searchParams.get('latitude');
+  const longitude = searchParams.get('longitude');
 
-  // Verificar si se proporcionaron las coordenadas
   if (!latitude || !longitude) {
-    return NextResponse.json({ error: 'Faltan los parámetros de latitud o longitud' }, { status: 400 });
+    // Considerar si quieres que esto sea opcional si solo buscas todas las ubicaciones
+    // Por ahora, lo mantenemos como estaba en la versión anterior simplificada
+    return NextResponse.json({ error: 'Latitude and longitude are required' }, { status: 400 });
   }
 
-  const supabase = createRouteHandlerClient({ cookies });
+  const cookieStore = cookies();
+  const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
 
   try {
-    // Convertir las coordenadas a números
-    const userLat = parseFloat(latitude);
-    const userLon = parseFloat(longitude);
-
-    // Llamar a la función de base de datos para obtener ubicaciones por cercanía
-    const { data, error } = await supabase.rpc('get_locations_nearby', {
-      user_lat: userLat, // Pasar latitud como parámetro
-      user_lon: userLon  // Pasar longitud como parámetro
-    });
+    // Obtener todas las ubicaciones sin filtrar ni ordenar por distancia
+    const { data: locations, error } = await supabase
+      .from('locations')
+      .select('*');
 
     if (error) {
-      console.error('Error consultando Supabase desde API route:', error);
-      return NextResponse.json({ error: 'Error al cargar ubicaciones' }, { status: 500 });
+      console.error('Error fetching locations:', error.message);
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Devolver los datos obtenidos
-    return NextResponse.json(data);
+    // Devolver todas las ubicaciones directamente
+    return NextResponse.json(locations || []);
 
   } catch (error) {
-    console.error('Error en la API route de ubicaciones:', error);
-    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
+    console.error('Unexpected error fetching locations:', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 } 
